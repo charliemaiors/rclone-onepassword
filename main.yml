@@ -1,0 +1,42 @@
+- name: Install rclone and configure it using 1password
+  hosts: rclone
+  become_method: sudo
+  vars:
+    onepassword_rclone_config: "doc-of-rclone-config"
+  roles:
+    - { role: charliemaiors.rclone_ansible, become: true }
+  tasks:
+    - name: Take the rclone configuration
+      onepassword_facts:
+        search_terms: "{{ onepassword_rclone_config }}"  # Assuming that you have already run op signin...
+      delegate_to: localhost
+      no_log: true
+    - name: Get the location of the config file
+      shell: 'rclone config file | grep -v "Configuration file*"'
+      args:
+        executable: /bin/bash
+      register: config_file
+    - name: Check if rclone config directory exist
+      stat:
+        path: "{{ config_file.stdout | dirname }}"
+      register: create_folder
+    - name: Check if the rclone.conf file exist
+      stat:
+        path: "{{ config_file.stdout }}"
+      register: touch_file
+    - name: Create directory for rclone config if not exist
+      file:
+        path: "{{ config_file.stdout | dirname }}"
+        state: directory
+      when: not create_folder.stat.exists
+    - name: Touch rclone file if the folder does not exist
+      file:
+        path: "{{ config_file.stdout }}"
+        state: touch
+      when: not touch_file.stat.exists
+    - name: Create the rclone config
+      copy:
+        dest: "{{ config_file.stdout }}"
+        content: "{{ item.value.document }}" # One Document
+      with_dict: "{{ onepassword }}"
+      no_log: true # Otherwise the configuration will be printed to stdout
